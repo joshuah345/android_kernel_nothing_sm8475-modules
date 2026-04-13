@@ -3880,6 +3880,29 @@ exit:
 	return count;
 }
 
+static ssize_t sysfs_hbm_read(struct device *dev,
+    struct device_attribute *attr, char *buf)
+{
+	 return sysfs_emit(buf, "%d\n", sde_get_hbm_status());
+}
+
+static ssize_t sysfs_hbm_write(struct device *dev,
+    struct device_attribute *attr, const char *buf, size_t count)
+{
+	int rc = 0;
+	unsigned long hbm_mode;
+	rc = kstrtoul(buf, 0, &hbm_mode);
+
+	if (rc)
+		return rc;
+
+	sde_set_hbm(hbm_mode);
+
+
+	return count;
+}
+
+static DEVICE_ATTR(hbm, 0644, sysfs_hbm_read, sysfs_hbm_write);
 static DEVICE_ATTR(fod_ui, 0444, sysfs_fod_ui_read, NULL);
 static DEVICE_ATTR(force_fod_ui, 0644,
 		   sysfs_force_fod_ui_read,
@@ -3889,6 +3912,7 @@ static DEVICE_ATTR(fod_dim_alpha, 0644,
 		   sysfs_fod_dim_alpha_write);
 
 static struct attribute *panel_attrs[] = {
+	&dev_attr_hbm.attr,
 	&dev_attr_fod_ui.attr,
 	&dev_attr_fod_dim_alpha.attr,
 	&dev_attr_force_fod_ui.attr,
@@ -5197,7 +5221,6 @@ int dsi_panel_enable(struct dsi_panel *panel)
 		}
 	}
 	panel->panel_initialized = true;
-
 error:
 	mutex_unlock(&panel->panel_lock);
 	return rc;
@@ -5220,6 +5243,8 @@ int dsi_panel_post_enable(struct dsi_panel *panel)
 		       panel->name, rc);
 		goto error;
 	}
+
+	sde_connector_restore_hbm();
 error:
 	mutex_unlock(&panel->panel_lock);
 	return rc;

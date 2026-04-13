@@ -838,4 +838,9 @@ int dsi_display_restore_bit_clk(struct dsi_display *display, struct dsi_display_
 bool dsi_display_mode_match(const struct dsi_display_mode *mode1,
 		struct dsi_display_mode *mode2, unsigned int match_flags);
 
+
+void sde_set_hbm(unsigned long val);
+ssize_t sde_get_hbm_status(void);
+void sde_connector_restore_hbm(void);
+
 #endif /* _DSI_DISPLAY_H_ */

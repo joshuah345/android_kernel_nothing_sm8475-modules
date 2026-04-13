@@ -169,7 +169,7 @@ static int sde_backlight_device_update_status(struct backlight_device *bd)
 		return -EINVAL;
 	}
 
-	if (!update_hbm_brightness) {
+	if (!update_hbm_brightness && !panel_hbm_flag) {
 		schedule_work(&c_conn->set_brightness_work);
 		return 0;
 	}
@@ -194,12 +194,8 @@ static int sde_backlight_device_update_status(struct backlight_device *bd)
 
 	display->panel->bl_config.real_bl_level = bl_lvl;
 
-	if (finger_hbm_flag) {
+	if (panel_hbm_flag || finger_hbm_flag) {
 		SDE_ERROR("update hbm brightness\n");
-		bl_lvl = display->panel->bl_config.bl_hbm_level;
-	}
-
-	if (panel_hbm_flag) {
 		bl_lvl = display->panel->bl_config.bl_hbm_level;
 	}
 
@@ -207,6 +203,8 @@ static int sde_backlight_device_update_status(struct backlight_device *bd)
 		bl_lvl = 1;
 
 	if (!c_conn->allow_bl_update) {
+		if (panel_hbm_flag)
+			bl_lvl = display->panel->bl_config.bl_hbm_level;
 		c_conn->unset_bl_level = bl_lvl;
 		return 0;
 	}
@@ -1048,7 +1046,7 @@ static int _sde_connector_update_dirty_properties(
 static int _sde_connector_update_finger_hbm_status(
 				struct drm_connector *connector)
 {
-        bool is_aosp;
+    bool is_aosp;
 	bool status;
 	struct sde_connector *c_conn;
 	struct sde_connector_state *c_state;
@@ -1072,7 +1070,7 @@ static int _sde_connector_update_finger_hbm_status(
         is_aosp = (!c_conn->fingerlayer_dirty && !c_conn->finger_flag);
         status = sde_connector_fod_dim_layer_status(c_conn);
         if (is_aosp) {
-                if (status == dsi_panel_get_fod_ui(display->panel))
+                if (status == dsi_panel_get_fod_ui(display->panel) || panel_hbm_flag)
                         return 0;
         } else if (!c_conn->fingerlayer_dirty && (finger_hbm_flag == c_conn->finger_flag)) {
                 return 0;
@@ -1136,6 +1134,13 @@ static int _sde_connector_update_finger_hbm_status(
 	return 0;
 }
 
+void sde_connector_restore_hbm(void)
+{
+    if (panel_hbm_flag && panel_feature_sde_conn && 
+        panel_feature_sde_conn->bl_device)
+        schedule_work(&panel_feature_sde_conn->set_brightness_work);
+}
+
 static void _sde_connector_set_brightness_work(struct work_struct *work)
 {
 	struct sde_connector *c_conn;
@@ -1180,15 +1185,10 @@ static void _sde_connector_set_brightness_work(struct work_struct *work)
 			display->panel->bl_config.brightness_max_level);
 
         display->panel->bl_config.real_bl_level = bl_lvl;
-
+	
 	/*if enable hbm_mode, set brightness to HBM brightness*/
-	if (finger_hbm_flag) {
+	if (panel_hbm_flag || finger_hbm_flag) {
 		SDE_ERROR("update hbm brightness\n");
-		bl_lvl = display->panel->bl_config.bl_hbm_level;
-	}
-
-	/*if enable hbm_mode, set brightness to HBM brightness*/
-	if (panel_hbm_flag) {
 		bl_lvl = display->panel->bl_config.bl_hbm_level;
 	}
 
@@ -3090,6 +3090,23 @@ static const struct file_operations conn_cmd_panel_id_dc_fops = {
 	.read =         _sde_debugfs_conn_cmd_panel_id_dc_read,
 };
 
+void sde_set_hbm(unsigned long val)
+{
+	panel_hbm_flag = val;
+
+	if (!panel_feature_sde_conn || !panel_feature_sde_conn->bl_device) {
+		SDE_ERROR("panel is not ready!\n");
+        return;
+	}
+
+    sde_backlight_device_update_status(panel_feature_sde_conn->bl_device);
+}
+
+ssize_t sde_get_hbm_status(void)
+{
+	return panel_hbm_flag;
+}
+
 static ssize_t store_hbm_mode(struct kobject *kobj,struct kobj_attribute *attr,const char *buf, size_t size)
 {
 	int rc = 0;
@@ -3098,12 +3115,8 @@ static ssize_t store_hbm_mode(struct kobject *kobj,struct kobj_attribute *attr,c
 
 	if (rc)
 		return rc;
-	if (hbm_mode)
-		panel_hbm_flag = 1;
-	else
-		panel_hbm_flag = 0;
 
-	sde_backlight_device_update_status(panel_feature_sde_conn->bl_device);
+	sde_set_hbm(hbm_mode);
 
 	return size;
 }

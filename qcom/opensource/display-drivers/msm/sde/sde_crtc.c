@@ -5468,6 +5468,7 @@ sde_crtc_fod_atomic_check(struct sde_crtc_state *cstate,
 	struct dsi_display *display;
 	uint32_t dim_layer_stage = INT_MAX;
 	bool force_fod_ui;
+	bool panel_hbm_flag;
 	int plane_idx;
         int fod_plane_idx = -1;
 
@@ -5476,7 +5477,7 @@ sde_crtc_fod_atomic_check(struct sde_crtc_state *cstate,
 		SDE_ERROR("Invalid primary display\n");
 		return;
 	}
-
+		panel_hbm_flag = sde_get_hbm_status();
         force_fod_ui = dsi_panel_get_force_fod_ui(display->panel);
 
 	for (plane_idx = 0; plane_idx < cnt; plane_idx++) {
@@ -5502,8 +5503,13 @@ sde_crtc_fod_atomic_check(struct sde_crtc_state *cstate,
                 }
 	}
 
-	if (fod_plane_idx >= 0 || force_fod_ui)
+	if (!panel_hbm_flag && (force_fod_ui || fod_plane_idx >= 0))
 		fod_dim_layer = sde_crtc_setup_fod_dim_layer(cstate, dim_layer_stage);
+	else if (panel_hbm_flag && cstate->fod_dim_layer) {
+		cstate->fod_dim_layer = NULL;
+		set_bit(SDE_CRTC_DIRTY_DIM_LAYERS, cstate->dirty);
+		return;
+	}
 
 	if (fod_dim_layer == cstate->fod_dim_layer)
 		return;
